@@ -129,14 +129,14 @@
                     </div>
 
                     <!-- SMART MODAL (Frame 2) -->
-                    <div id="frame-2-modal" class="absolute inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-50 hidden">
+                    <div id="frame-2-modal" class="absolute inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
                         <div class="bg-discord-modalBg w-[720px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg shadow-2xl border border-discord-divider flex flex-col animate-in fade-in zoom-in-95 duration-150">
                             <div class="px-6 py-4 border-b border-discord-divider flex items-center justify-between bg-discord-sidebarBg">
                                 <div class="flex items-center space-x-2.5">
                                     <div class="w-7 h-7 rounded bg-discord-brand/20 flex items-center justify-center text-discord-brand text-xs"><i class="fa-solid fa-compress"></i></div>
-                                    <h3 class="font-bold text-white text-base">Smart File Optimizer</h3>
+                                    <h3 id="modal-title" class="font-bold text-white text-base">Smart File Optimizer</h3>
                                 </div>
-                                <button onclick="startNormalChatState()" class="text-discord-textMuted hover:text-white transition-colors"><i class="fa-solid fa-xmark text-lg"></i></button>
+                                <button onclick="startNormalChatState()" class="text-discord-textMuted hover:text-white transition-colors" aria-label="Close file optimizer"><i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i></button>
                             </div>
                             <div id="modal-file-details" class="p-6 flex space-x-5 items-start">
                                 <div id="modal-file-thumbnail" class="w-44 h-28 bg-black rounded-lg relative overflow-hidden flex-shrink-0 border border-discord-divider flex items-center justify-center"></div>
@@ -147,13 +147,22 @@
                                             <span id="modal-orig-size" class="text-xs text-discord-textMuted">45 MB</span>
                                             <span class="text-xs text-discord-textMuted">Original file</span>
                                         </div>
-                                        <div class="mt-2 flex items-center gap-2 text-xs">
+                                        <div id="modal-compression-feedback" class="mt-2 flex items-center gap-2 text-xs rounded-md px-1 py-0.5">
                                             <i class="fa-solid fa-arrow-right text-discord-textMuted"></i>
-                                            <span id="modal-compressed-size" class="font-semibold text-discord-green">Measuring compressed size...</span>
+                                            <span id="modal-compression-icon" class="compression-status-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+                                            <span id="modal-compressed-size" class="font-semibold" role="status" aria-live="polite" aria-atomic="true">Select a file to check compression.</span>
+                                        </div>
+                                        <div id="modal-file-progress" class="file-progress-track compression-status-info" role="progressbar" aria-label="File processing" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Waiting for a file">
+                                            <span id="modal-file-progress-fill"></span>
+                                        </div>
+                                        <div class="workflow-steps" aria-hidden="true">
+                                            <span id="modal-step-selected"><i class="fa-solid fa-circle-check"></i> Selected</span>
+                                            <span id="modal-step-optimize"><i class="fa-solid fa-compress"></i> Optimize</span>
+                                            <span id="modal-step-ready"><i class="fa-solid fa-paper-plane"></i> Ready</span>
                                         </div>
                                     </div>
                                     <div class="rounded-lg border border-discord-divider bg-discord-userBarBg p-3">
-                                        <p id="compression-note" class="text-xs text-discord-textMuted">Compression is available for images. Other file types will be sent unchanged.</p>
+                                        <p id="compression-note" class="text-xs text-discord-textMuted">Files are compressed on your device when it can reduce their size. Compressed files must be 20 MB or smaller.</p>
                                     </div>
                                 </div>
                             </div>
@@ -161,8 +170,8 @@
                                 <span class="text-xs text-discord-textMuted">Choose how to send this file</span>
                                 <div id="modal-actions" class="flex gap-2">
                                     <button onclick="startNormalChatState()" class="px-4 py-2 text-xs font-semibold text-discord-textNormal hover:underline">Cancel</button>
-                                    <button onclick="sendDesktopFile(false)" class="px-4 py-2 text-xs font-semibold border border-discord-divider hover:bg-discord-sidebarBg text-white rounded-md">Send original</button>
-                                    <button onclick="sendDesktopFile(true)" class="px-4 py-2 text-xs font-semibold bg-discord-brand hover:bg-discord-brandHover text-white rounded-md"><i class="fa-solid fa-compress mr-1"></i>Compress &amp; send</button>
+                                    <button onclick="sendDesktopFile(false)" id="desktop-send-original-button" class="px-4 py-2 text-xs font-semibold border border-discord-divider hover:bg-discord-sidebarBg text-white rounded-md">Send original</button>
+                                    <button onclick="sendDesktopFile(true)" id="desktop-compress-button" class="compression-send-button compression-send-button-disabled px-4 py-2 text-xs font-semibold rounded-md" disabled><i class="fa-solid fa-compress mr-1" aria-hidden="true"></i>Compress &amp; send</button>
                                 </div>
                             </div>
                         </div>
@@ -196,18 +205,29 @@
                 <!-- Mobile Bottom Sheet -->
                 <div id="mobile-bottom-sheet" class="absolute inset-0 bg-black/60 z-50 flex flex-col justify-end hidden">
                     <div class="bg-discord-modalBg rounded-t-2xl p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
-                        <div id="mobile-step-5" class="hidden space-y-4">
+                        <div id="mobile-step-5" class="hidden space-y-4" role="dialog" aria-label="File compression options">
                             <div class="flex items-center space-x-3">
                                 <div id="mobile-preview-box" class="w-16 h-16 bg-black rounded-lg relative overflow-hidden flex-shrink-0 flex items-center justify-center"></div>
                                 <div>
                                     <div id="mobile-preview-name" class="text-xs font-bold text-white">video.mp4</div>
-                                    <div id="mobile-preview-compressed" class="text-[11px] text-discord-green">Measuring compressed size...</div>
+                                    <div id="mobile-compression-feedback" class="flex items-center gap-1.5 text-[11px] rounded-md px-1 py-0.5">
+                                        <span id="mobile-compression-icon" class="compression-status-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+                                        <span id="mobile-preview-compressed" role="status" aria-live="polite" aria-atomic="true">Select a file to check compression.</span>
+                                    </div>
+                                    <div id="mobile-file-progress" class="file-progress-track compression-status-info" role="progressbar" aria-label="File processing" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Waiting for a file">
+                                        <span id="mobile-file-progress-fill"></span>
+                                    </div>
                                 </div>
                             </div>
-                            <p id="mobile-compression-note" class="text-xs text-discord-textMuted">Compression is available for images. Other file types will be sent unchanged.</p>
+                            <div class="workflow-steps" aria-hidden="true">
+                                <span id="mobile-step-selected"><i class="fa-solid fa-circle-check"></i> Selected</span>
+                                <span id="mobile-step-optimize"><i class="fa-solid fa-compress"></i> Optimize</span>
+                                <span id="mobile-step-ready"><i class="fa-solid fa-paper-plane"></i> Ready</span>
+                            </div>
+                            <p id="mobile-compression-note" class="text-xs text-discord-textMuted">Files are compressed on your device when it can reduce their size. Compressed files must be 20 MB or smaller.</p>
                             <div class="grid grid-cols-2 gap-2">
-                                <button onclick="sendMobileFile(false)" class="py-2.5 border border-discord-divider text-white text-xs font-semibold rounded-lg">Send original</button>
-                                <button onclick="sendMobileFile(true)" class="py-2.5 bg-discord-brand text-white text-xs font-semibold rounded-lg">Compress &amp; send</button>
+                                <button onclick="sendMobileFile(false)" id="mobile-send-original-button" class="py-2.5 border border-discord-divider text-white text-xs font-semibold rounded-lg">Send original</button>
+                                <button onclick="sendMobileFile(true)" id="mobile-compress-button" class="compression-send-button compression-send-button-disabled py-2.5 text-xs font-semibold rounded-lg" disabled>Compress &amp; send</button>
                             </div>
                         </div>
                     </div>
@@ -215,6 +235,8 @@
             </div>
         </div>
     </main>
+
+    <div id="app-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <div id="drive-picker" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="drive-picker-title">
         <div class="w-full max-w-lg rounded-lg border border-discord-divider bg-discord-modalBg p-5 shadow-2xl">

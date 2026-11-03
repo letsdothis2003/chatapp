@@ -174,3 +174,190 @@
     color: #949BA4;
     font-size: 18px;
 }
+
+button:focus-visible,
+input:focus-visible,
+audio:focus-visible,
+video:focus-visible {
+    outline: 2px solid #AEB8FF;
+    outline-offset: 2px;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+.compression-send-button {
+    color: #fff;
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.compression-send-button-disabled,
+.compression-send-button:disabled {
+    background-color: #4B4D54;
+    color: #B5B7BE;
+}
+
+.compression-send-button-ready:not(:disabled) {
+    background-color: #5865F2;
+    box-shadow: 0 0 0 1px rgb(174 184 255 / 28%);
+}
+
+.compression-send-button-ready:not(:disabled):hover {
+    background-color: #4752C4;
+}
+
+.compression-status-icon,
+#modal-compressed-size,
+#mobile-preview-compressed {
+    color: #AEB8FF;
+}
+
+.compression-status-success,
+#modal-compressed-size.compression-status-success,
+#mobile-preview-compressed.compression-status-success {
+    color: #57F287;
+}
+
+.compression-status-warning,
+#modal-compressed-size.compression-status-warning,
+#mobile-preview-compressed.compression-status-warning {
+    color: #F0B232;
+}
+
+.compression-status-error,
+#modal-compressed-size.compression-status-error,
+#mobile-preview-compressed.compression-status-error {
+    color: #F23F43;
+}
+
+.compression-status-processing,
+#modal-compressed-size.compression-status-processing,
+#mobile-preview-compressed.compression-status-processing {
+    color: #AEB8FF;
+}
+
+.file-progress-track {
+    height: 5px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #45474F;
+}
+
+.file-progress-track > span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: #57F287;
+    transition: width 180ms ease, background-color 180ms ease;
+}
+
+.file-progress-track.compression-status-info > span {
+    background: #5865F2;
+}
+
+.file-progress-track.compression-status-waiting > span {
+    width: 0;
+}
+
+.file-progress-track.compression-status-warning > span {
+    background: #F0B232;
+}
+
+.file-progress-track.compression-status-error > span {
+    background: #F23F43;
+}
+
+.file-progress-track.is-indeterminate > span {
+    width: 36%;
+    background: linear-gradient(90deg, #5865F2, #AEB8FF, #5865F2);
+    animation: file-progress-sweep 1.2s ease-in-out infinite;
+}
+
+.workflow-steps {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    color: #949BA4;
+    font-size: 10px;
+}
+
+.workflow-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 180ms ease;
+}
+
+.workflow-step.is-complete {
+    color: #57F287;
+}
+
+.workflow-step.is-current {
+    color: #AEB8FF;
+}
+
+.workflow-step.is-attention {
+    color: #F0B232;
+}
+
+.workflow-step.is-error {
+    color: #F23F43;
+}
+
+@keyframes file-progress-sweep {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(290%); }
+}
+
+.visual-feedback {
+    position: relative;
+    isolation: isolate;
+    animation: visual-feedback-flash 700ms ease-out;
+}
+
+.visual-feedback::after {
+    position: absolute;
+    z-index: 1;
+    inset: -3px;
+    border: 1px solid rgb(88 101 242 / 70%);
+    border-radius: inherit;
+    content: "";
+    pointer-events: none;
+    animation: visual-feedback-ripple 700ms ease-out;
+}
+
+@keyframes visual-feedback-flash {
+    0% { background-color: rgb(88 101 242 / 24%); box-shadow: 0 0 0 0 rgb(88 101 242 / 50%); }
+    45% { background-color: rgb(88 101 242 / 10%); box-shadow: 0 0 16px 3px rgb(88 101 242 / 24%); }
+    100% { background-color: transparent; box-shadow: 0 0 0 0 rgb(88 101 242 / 0%); }
+}
+
+@keyframes visual-feedback-ripple {
+    0% { opacity: 0.9; transform: scale(0.98); }
+    100% { opacity: 0; transform: scale(1.04); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .visual-feedback,
+    .visual-feedback::after {
+        animation-duration: 0.01ms !important;
+    }
+
+    .file-progress-track.is-indeterminate > span {
+        width: 100%;
+        animation: none;
+    }
+}

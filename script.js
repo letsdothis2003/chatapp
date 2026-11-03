@@ -1,18 +1,25 @@
-// State for dynamic user-uploaded file
+const COMPRESSION_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
+const MAX_COMPRESSED_SIZE_BYTES = 20 * 1024 * 1024;
+const DEFAULT_COMPRESSION_STATUS = 'Select a file to check compression.';
+
 let currentFileState = {
     name: "video.mp4",
     sizeBytes: 45 * 1024 * 1024,
     sizeMB: "45.0 MB",
     rawSizeMB: 45.0,
-    isOverLimit: true,
     type: "video/mp4",
     dataUrl: null,
     file: null,
-    iconClass: "fa-file-video"
+    iconClass: "fa-file-video",
+    compressionStatus: DEFAULT_COMPRESSION_STATUS,
+    compressionStatusKind: 'info',
+    compressedBlob: null,
+    compressionFormat: null
 };
 
 let dragCounter = 0;
 let currentCompressionPromise = Promise.resolve(null);
+let audioContext = null;
 
 const DEMO_DRIVE_FILES = [
     { name: 'Coastline at dusk.jpg', type: 'image', size: '2.4 MB', imageUrl: 'https://picsum.photos/seed/drive-coastline/480/320' },
@@ -25,6 +32,7 @@ const DEMO_DRIVE_FILES = [
 // --- INITIALIZATION & UPLOAD TRIGGERS ---
 
 function triggerDesktopUpload() {
+    primeAudioCues();
     closeAttachmentMenu();
     closeMobileAttachmentMenu();
     document.getElementById('real-file-input').click();
@@ -39,25 +47,29 @@ function handleRealFileUpload(event) {
 }
 
 function processUploadedFile(file) {
+    primeAudioCues().then(() => playSoundCue('select'));
     const sizeInMB = file.size / (1024 * 1024);
-    const isOver = sizeInMB > 25;
+    const needsCompression = file.size > COMPRESSION_THRESHOLD_BYTES;
 
     currentFileState = {
         name: file.name,
         sizeBytes: file.size,
         sizeMB: sizeInMB < 1 ? (file.size / 1024).toFixed(1) + " KB" : sizeInMB.toFixed(1) + " MB",
         rawSizeMB: sizeInMB,
-        isOverLimit: isOver,
         type: file.type,
         dataUrl: null,
-        compressedBlob: null,
-        compressionStatus: 'Measuring compressed size...',
         file,
-        iconClass: getFileIconClass(file.name, file.type)
+        iconClass: getFileIconClass(file.name, file.type),
+        compressedBlob: null,
+        compressionFormat: null,
+        compressionStatus: needsCompression ? 'Preparing compression…' : 'Original ready · no compression needed',
+        compressionStatusKind: needsCompression ? 'processing' : 'info'
     };
 
     updateUIWithCurrentFile();
-    currentCompressionPromise = prepareImageCompression(file);
+    triggerVisualFeedback(document.getElementById('modal-compression-feedback'));
+    triggerVisualFeedback(document.getElementById('mobile-compression-feedback'));
+    currentCompressionPromise = prepareFileCompression(file);
 
     if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
         const reader = new FileReader();
@@ -102,14 +114,13 @@ function updateUIWithCurrentFile() {
     // Frame 2 Modal
     document.getElementById('modal-file-name').innerText = currentFileState.name;
     document.getElementById('modal-orig-size').innerText = currentFileState.sizeMB;
-    document.getElementById('compression-note').innerText = currentFileState.type.startsWith('image/')
-        ? 'Compressed size is measured on your device before sending.'
-        : 'Compression is not available for this file type. It will be sent unchanged.';
+    const compressionNote = getCompressionNote();
+    document.getElementById('compression-note').innerText = compressionNote;
     updateCompressionEstimate();
 
     const thumbBox = document.getElementById('modal-file-thumbnail');
     if (currentFileState.dataUrl && currentFileState.type.startsWith('image/')) {
-        thumbBox.innerHTML = `<img src="${currentFileState.dataUrl}" class="w-full h-full object-cover"><div class="absolute top-2 right-2 w-6 h-6 rounded-full bg-discord-green text-white flex items-center justify-center text-xs shadow-md font-bold"><i class="fa-solid fa-check"></i></div>`;
+        thumbBox.innerHTML = `<img src="${currentFileState.dataUrl}" alt="" class="w-full h-full object-cover"><div class="absolute top-2 right-2 w-6 h-6 rounded-full bg-discord-green text-white flex items-center justify-center text-xs shadow-md font-bold"><i class="fa-solid fa-check"></i></div>`;
     } else if (currentFileState.dataUrl && currentFileState.type.startsWith('video/')) {
         thumbBox.innerHTML = `<video src="${currentFileState.dataUrl}" class="w-full h-full object-cover"></video><div class="absolute inset-0 flex items-center justify-center"><i class="fa-solid fa-play text-white/90 text-2xl drop-shadow-md"></i></div><div class="absolute top-2 right-2 w-6 h-6 rounded-full bg-discord-green text-white flex items-center justify-center text-xs shadow-md font-bold"><i class="fa-solid fa-check"></i></div>`;
     } else {
@@ -119,40 +130,154 @@ function updateUIWithCurrentFile() {
     // Mobile Sync
     document.getElementById('mobile-preview-name').innerText = currentFileState.name;
     updateCompressionEstimate();
-    document.getElementById('mobile-compression-note').innerText = currentFileState.type.startsWith('image/')
-        ? 'Compressed size is measured on your device before sending.'
-        : 'Compression is not available for this file type. It will be sent unchanged.';
+    document.getElementById('mobile-compression-note').innerText = compressionNote;
     document.getElementById('mobile-preview-box').innerHTML = thumbBox.innerHTML;
 }
 
-function updateCompressionEstimate() {
-    document.getElementById('modal-compressed-size').innerText = currentFileState.compressionStatus;
-    document.getElementById('mobile-preview-compressed').innerText = currentFileState.compressionStatus;
+function getCompressionNote() {
+    if (!currentFileState.file) {
+        return 'Files are compressed on your device when it can reduce their size. Compressed files must be 20 MB or smaller.';
+    }
+    if (currentFileState.sizeBytes <= COMPRESSION_THRESHOLD_BYTES) {
+        return 'This file does not need compression and will be sent as-is.';
+    }
+    return currentFileState.type.startsWith('image/')
+        ? 'This image will be converted to WebP on your device, which may reduce image quality. Compressed files over 20 MB cannot be sent.'
+        : 'GZIP compression is attempted on your device. Compressed files over 20 MB cannot be sent.';
 }
 
-async function prepareImageCompression(file) {
-    if (!file.type.startsWith('image/')) {
-        currentFileState.compressionStatus = `Unchanged size: ${currentFileState.sizeMB}`;
+function updateCompressionEstimate() {
+    const statusIcons = {
+        info: 'fa-circle-info',
+        processing: 'fa-spinner fa-spin',
+        success: 'fa-circle-check',
+        warning: 'fa-triangle-exclamation',
+        error: 'fa-circle-exclamation'
+    };
+    const statusKind = currentFileState.compressionStatusKind || 'info';
+    const statusText = currentFileState.compressionStatus || DEFAULT_COMPRESSION_STATUS;
+
+    document.getElementById('modal-compressed-size').textContent = statusText;
+    document.getElementById('mobile-preview-compressed').textContent = statusText;
+    document.getElementById('modal-compressed-size').className = `font-semibold compression-status-${statusKind}`;
+    document.getElementById('mobile-preview-compressed').className = `compression-status-${statusKind}`;
+    for (const [id, buttonId] of [
+        ['modal-compression-icon', 'desktop-compress-button'],
+        ['mobile-compression-icon', 'mobile-compress-button']
+    ]) {
+        const icon = document.getElementById(id);
+        icon.className = `compression-status-icon compression-status-${statusKind}`;
+        icon.innerHTML = `<i class="fa-solid ${statusIcons[statusKind]}" aria-hidden="true"></i>`;
+        const button = document.getElementById(buttonId);
+        const canSendCompressed = statusKind === 'success';
+        button.disabled = !canSendCompressed;
+        button.className = `compression-send-button ${canSendCompressed ? 'compression-send-button-ready' : 'compression-send-button-disabled'}`;
+    }
+    document.getElementById('modal-compressed-size').setAttribute('aria-busy', String(statusKind === 'processing'));
+    document.getElementById('mobile-preview-compressed').setAttribute('aria-busy', String(statusKind === 'processing'));
+    document.getElementById('desktop-send-original-button').disabled = statusKind === 'processing';
+    document.getElementById('mobile-send-original-button').disabled = statusKind === 'processing';
+    updateWorkflowIndicators(statusKind, statusText);
+}
+
+function updateWorkflowIndicators(statusKind, statusText) {
+    const hasFile = Boolean(currentFileState.file);
+    const progress = !hasFile ? 0 : statusKind === 'processing' ? null : 100;
+    const statusLabels = {
+        waiting: 'Waiting for a file',
+        info: 'File ready',
+        processing: 'Optimizing file',
+        success: 'Compression complete',
+        warning: 'Original ready',
+        error: 'Check file status'
+    };
+    const workflowStatus = hasFile ? statusKind : 'waiting';
+
+    for (const prefix of ['modal', 'mobile']) {
+        const track = document.getElementById(`${prefix}-file-progress`);
+        const showProgress = hasFile && (statusKind === 'processing' || statusKind === 'success');
+        track.hidden = !showProgress;
+        track.className = `file-progress-track compression-status-${workflowStatus}${statusKind === 'processing' && hasFile ? ' is-indeterminate' : ''}`;
+        track.setAttribute('aria-valuetext', hasFile ? `${statusLabels[statusKind]}: ${statusText}` : statusLabels.waiting);
+        if (progress === null) {
+            track.removeAttribute('aria-valuenow');
+        } else {
+            track.setAttribute('aria-valuenow', String(progress));
+        }
+
+        const selected = document.getElementById(`${prefix}-step-selected`);
+        const optimize = document.getElementById(`${prefix}-step-optimize`);
+        const ready = document.getElementById(`${prefix}-step-ready`);
+        selected.className = `workflow-step${hasFile ? ' is-complete' : ''}`;
+        optimize.className = !hasFile
+            ? 'workflow-step'
+            : statusKind === 'processing'
+            ? 'workflow-step is-current'
+            : statusKind === 'error'
+                ? 'workflow-step is-error'
+                : statusKind === 'warning'
+                    ? 'workflow-step is-attention'
+                    : 'workflow-step is-complete';
+        ready.className = hasFile && statusKind !== 'processing' ? 'workflow-step is-complete' : 'workflow-step';
+        if (hasFile && statusKind === 'info') optimize.title = 'No optimization needed';
+        else optimize.removeAttribute('title');
+    }
+}
+
+async function prepareFileCompression(file) {
+    if (file.size <= COMPRESSION_THRESHOLD_BYTES) {
+        currentFileState.compressionStatus = 'Original ready · no compression needed';
+        currentFileState.compressionStatusKind = 'info';
         updateCompressionEstimate();
+        triggerVisualFeedback(document.getElementById('modal-file-progress'));
+        triggerVisualFeedback(document.getElementById('mobile-file-progress'));
+        playSoundCue('success');
         return null;
     }
 
-    currentFileState.compressionStatus = 'Measuring compressed size...';
+    currentFileState.compressionStatus = 'Compressing on your device…';
+    currentFileState.compressionStatusKind = 'processing';
     updateCompressionEstimate();
+    triggerVisualFeedback(document.getElementById('modal-compression-feedback'));
+    triggerVisualFeedback(document.getElementById('mobile-compression-feedback'));
+    playSoundCue('processing');
 
     try {
-        const compressedBlob = await compressImageFile(file);
+        const isImage = file.type.startsWith('image/');
+        const compressedBlob = isImage
+            ? await compressImageFile(file)
+            : await compressWithGzip(file);
         if (currentFileState.file !== file) return null;
         currentFileState.compressedBlob = compressedBlob;
-        currentFileState.compressionStatus = compressedBlob
-            ? `Compressed size: ${formatFileSize(compressedBlob.size)}`
-            : `No size reduction; stays at ${currentFileState.sizeMB}`;
+        currentFileState.compressionFormat = compressedBlob ? (isImage ? 'webp' : 'gzip') : null;
+        if (compressedBlob && compressedBlob.size > MAX_COMPRESSED_SIZE_BYTES) {
+            currentFileState.compressionStatus = `Too big · compressed file is ${formatFileSize(compressedBlob.size)} (20 MB max)`;
+            currentFileState.compressionStatusKind = 'error';
+        } else if (compressedBlob) {
+            currentFileState.compressionStatus = `Ready · ${formatFileSize(compressedBlob.size)} (from ${currentFileState.sizeMB})`;
+            currentFileState.compressionStatusKind = 'success';
+        } else if (file.size > MAX_COMPRESSED_SIZE_BYTES) {
+            currentFileState.compressionStatus = `Too big · file remains ${currentFileState.sizeMB} (20 MB max)`;
+            currentFileState.compressionStatusKind = 'error';
+        } else {
+            currentFileState.compressionStatus = `No size reduction · original stays at ${currentFileState.sizeMB}`;
+            currentFileState.compressionStatusKind = 'warning';
+        }
     } catch (error) {
         if (currentFileState.file !== file) return null;
-        currentFileState.compressionStatus = 'Could not estimate; original stays available.';
+        console.error('File compression failed; the original is still available.', error);
+        currentFileState.compressionStatus = file.size > MAX_COMPRESSED_SIZE_BYTES
+            ? `Too big · file remains ${currentFileState.sizeMB} (20 MB max)`
+            : 'Compression failed · original stays available';
+        currentFileState.compressionStatusKind = 'error';
     }
 
     updateCompressionEstimate();
+    triggerVisualFeedback(document.getElementById('modal-compression-feedback'));
+    triggerVisualFeedback(document.getElementById('mobile-compression-feedback'));
+    triggerVisualFeedback(document.getElementById('modal-file-progress'));
+    triggerVisualFeedback(document.getElementById('mobile-file-progress'));
+    playSoundCue(currentFileState.compressionStatusKind);
     return currentFileState.compressedBlob;
 }
 
@@ -189,6 +314,7 @@ function handleDragLeave(e) {
 
 function handleDrop(e) {
     e.preventDefault();
+    primeAudioCues();
     dragCounter = 0;
     document.getElementById('frame-1-overlay').classList.add('hidden');
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -201,21 +327,32 @@ function handleDrop(e) {
 // --- SENDING FILES ---
 
 async function sendDesktopFile(compress = false) {
-    document.getElementById('frame-2-modal').classList.add('hidden');
+    if (!compress && currentFileState.compressionStatusKind === 'processing') {
+        announce('Please wait for compression to finish before sending the original.');
+        return;
+    }
+
+    await primeAudioCues();
     const sentFile = await getFileToSend(compress);
+    if (sentFile.tooBig) {
+        showTooBigFeedback(sentFile.status);
+        return;
+    }
+
+    document.getElementById('frame-2-modal').classList.add('hidden');
     const resultContainer = document.getElementById('desktop-result-message');
     const newMsg = document.createElement('div');
     newMsg.className = "flex space-x-4 group hover:bg-[#2E3035]/40 -mx-4 px-4 py-1.5 rounded animate-in fade-in duration-300";
-    const safeName = escapeHtml(currentFileState.name);
+    const safeName = escapeHtml(sentFile.name);
     let previewMediaHtml = '';
-    if (sentFile.dataUrl && currentFileState.type.startsWith('image/')) {
+    if (sentFile.dataUrl && sentFile.type.startsWith('image/')) {
         previewMediaHtml = `<img src="${sentFile.dataUrl}" alt="${safeName}" class="max-w-xs max-h-56 rounded-lg border border-discord-divider object-cover">`;
-    } else if (currentFileState.dataUrl && currentFileState.type.startsWith('video/')) {
-        previewMediaHtml = `<div class="w-72 bg-black rounded-lg overflow-hidden border border-discord-divider"><video src="${currentFileState.dataUrl}" class="w-full h-36 object-cover" controls></video></div>`;
+    } else if (!sentFile.compressed && sentFile.dataUrl && sentFile.type.startsWith('video/')) {
+        previewMediaHtml = `<div class="w-72 bg-black rounded-lg overflow-hidden border border-discord-divider"><video src="${sentFile.dataUrl}" class="w-full h-36 object-cover" controls></video></div>`;
     } else {
         previewMediaHtml = `
             <div class="bg-discord-sidebarBg border border-discord-divider rounded-lg p-3 max-w-xs flex items-center space-x-3">
-                <i class="fa-solid ${currentFileState.iconClass} text-discord-brand text-2xl"></i>
+                <i class="fa-solid ${sentFile.iconClass} text-discord-brand text-2xl"></i>
                 <div class="flex-1 overflow-hidden">
                     <div class="text-xs font-bold text-white truncate">${safeName}</div>
                     <div class="text-[10px] text-discord-textMuted">${sentFile.sizeLabel}</div>
@@ -232,41 +369,94 @@ async function sendDesktopFile(compress = false) {
                 <span class="text-[11px] text-discord-textMuted">Just now</span>
             </div>
             ${previewMediaHtml}
-            <div class="text-[11px] text-discord-textMuted">${sentFile.status}</div>
+            <div class="text-[11px] text-discord-textMuted">${escapeHtml(sentFile.status)}</div>
         </div>
     `;
 
     resultContainer.appendChild(newMsg);
+    triggerVisualFeedback(newMsg);
+    triggerVisualFeedback(document.getElementById('modal-file-progress'));
     const chatContainer = document.getElementById('desktop-chat-messages');
     chatContainer.scrollTop = chatContainer.scrollHeight;
+    announce(`${sentFile.name} sent. ${sentFile.status}`);
+    playSoundCue(sentFile.compressed || !compress ? 'success' : 'error');
 }
 
 async function getFileToSend(compress) {
-    if (!compress || !currentFileState.type.startsWith('image/')) {
+    const fileState = currentFileState;
+    const compressionPromise = currentCompressionPromise;
+    if (!compress) {
         return {
-            dataUrl: currentFileState.dataUrl,
-            sizeLabel: currentFileState.sizeMB,
-            status: compress ? 'Compression is not available for this file type; sent original.' : 'Sent original without compression.'
+            dataUrl: fileState.dataUrl,
+            name: fileState.name,
+            sizeLabel: fileState.sizeMB,
+            type: fileState.type,
+            iconClass: fileState.iconClass,
+            compressed: false,
+            status: 'Sent original without compression.'
         };
     }
 
-    await currentCompressionPromise;
-    const compressedBlob = currentFileState.compressedBlob;
+    await compressionPromise;
+    const compressedBlob = fileState.compressedBlob;
+    if (compressedBlob && compressedBlob.size > MAX_COMPRESSED_SIZE_BYTES) {
+        return {
+            name: fileState.name,
+            tooBig: true,
+            status: `Too big · compressed file is ${formatFileSize(compressedBlob.size)} (20 MB max).`
+        };
+    }
+
     if (!compressedBlob) {
-        const failed = currentFileState.compressionStatus.startsWith('Could not estimate');
+        if (fileState.sizeBytes > MAX_COMPRESSED_SIZE_BYTES) {
+            return {
+                name: fileState.name,
+                tooBig: true,
+                status: `Too big · file remains ${fileState.sizeMB} (20 MB max).`
+            };
+        }
         return {
-            dataUrl: currentFileState.dataUrl,
-            sizeLabel: currentFileState.sizeMB,
-            status: failed ? 'Compression failed; sent original.' : 'No smaller version was produced; sent original.'
+            dataUrl: fileState.dataUrl,
+            name: fileState.name,
+            sizeLabel: fileState.sizeMB,
+            type: fileState.type,
+            iconClass: fileState.iconClass,
+            compressed: false,
+            tooBig: false,
+            status: fileState.compressionStatusKind === 'error'
+                ? 'Compression failed; sent original unchanged.'
+                : fileState.sizeBytes <= COMPRESSION_THRESHOLD_BYTES
+                    ? 'No compression needed; sent original unchanged.'
+                    : 'No size reduction; sent original unchanged.'
         };
     }
 
-    const sizeLabel = formatFileSize(compressedBlob.size);
+    const sizeLabel = formatFileSize(compressedBlob.size)
     return {
-        dataUrl: await readBlobAsDataUrl(compressedBlob),
+        dataUrl: fileState.type.startsWith('image/') ? await readBlobAsDataUrl(compressedBlob) : null,
+        name: getCompressedFileName(fileState.name, fileState.compressionFormat),
         sizeLabel,
-        status: `Compressed from ${currentFileState.sizeMB} to ${sizeLabel} in your browser.`
+        type: compressedBlob.type,
+        iconClass: fileState.iconClass,
+        compressed: true,
+        tooBig: false,
+        status: `Compressed from ${fileState.sizeMB} to ${sizeLabel} on your device (${fileState.compressionFormat.toUpperCase()}).`
     };
+}
+
+function showTooBigFeedback(message) {
+    currentFileState.compressionStatus = message;
+    currentFileState.compressionStatusKind = 'error';
+    updateCompressionEstimate();
+    triggerVisualFeedback(document.getElementById('modal-compression-feedback'));
+    triggerVisualFeedback(document.getElementById('mobile-compression-feedback'));
+    announce(message);
+    playSoundCue('error');
+}
+
+function getCompressedFileName(fileName, format) {
+    if (format === 'gzip') return `${fileName}.gz`;
+    return fileName.replace(/\.[^.]+$/, '') + '.webp';
 }
 
 async function compressImageFile(file) {
@@ -284,6 +474,16 @@ async function compressImageFile(file) {
     }
 
     return compressedBlob && compressedBlob.size < file.size ? compressedBlob : null;
+}
+
+async function compressWithGzip(file) {
+    if (typeof CompressionStream === 'undefined') {
+        throw new Error('GZIP compression is not supported in this browser.');
+    }
+    const compressedStream = file.stream().pipeThrough(new CompressionStream('gzip'));
+    const compressedBlob = await new Response(compressedStream).blob();
+    if (compressedBlob.size >= file.size) return null;
+    return new Blob([compressedBlob], { type: 'application/gzip' });
 }
 
 function formatFileSize(sizeBytes) {
@@ -306,6 +506,68 @@ function escapeHtml(value) {
     })[character]);
 }
 
+function announce(message) {
+    document.getElementById('app-announcement').textContent = message;
+}
+
+async function primeAudioCues() {
+    if (!window.AudioContext) {
+        announce('Audio feedback is not supported in this browser; visual status indicators remain active.');
+        return;
+    }
+
+    try {
+        audioContext ??= new window.AudioContext();
+        if (audioContext.state === 'suspended') await audioContext.resume();
+    } catch (error) {
+        console.error('Unable to prepare audio feedback.', error);
+        announce('Audio feedback is unavailable; visual status indicators remain active.');
+    }
+}
+
+function playSoundCue(kind) {
+    if (!audioContext) return;
+    if (audioContext.state === 'suspended') {
+        audioContext.resume()
+            .then(() => playSoundCue(kind))
+            .catch(error => {
+                console.error('Unable to play audio feedback.', error);
+                announce('Audio feedback could not play; visual status indicators remain active.');
+            });
+        return;
+    }
+    if (audioContext.state !== 'running') return;
+
+    const cues = {
+        select: [{ frequency: 660, delay: 0, duration: 0.1 }],
+        processing: [{ frequency: 520, delay: 0, duration: 0.09 }, { frequency: 740, delay: 0.11, duration: 0.09 }],
+        success: [{ frequency: 660, delay: 0, duration: 0.1 }, { frequency: 880, delay: 0.1, duration: 0.1 }, { frequency: 1100, delay: 0.2, duration: 0.14 }],
+        warning: [{ frequency: 520, delay: 0, duration: 0.13 }, { frequency: 440, delay: 0.15, duration: 0.16 }],
+        error: [{ frequency: 330, delay: 0, duration: 0.15 }, { frequency: 220, delay: 0.17, duration: 0.18 }]
+    };
+
+    for (const cue of cues[kind] || cues.error) {
+        const startTime = audioContext.currentTime + cue.delay;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = cue.frequency;
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.07, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + cue.duration);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start(startTime);
+        oscillator.stop(startTime + cue.duration);
+    }
+}
+
+function triggerVisualFeedback(element) {
+    element.classList.remove('visual-feedback');
+    void element.offsetWidth;
+    element.classList.add('visual-feedback');
+}
+
 // --- MOBILE VIEW LOGIC ---
 
 function toggleMobileView() {
@@ -322,16 +584,31 @@ function toggleMobileView() {
 }
 
 async function sendMobileFile(compress) {
-    document.getElementById('mobile-bottom-sheet').classList.add('hidden');
+    if (!compress && currentFileState.compressionStatusKind === 'processing') {
+        announce('Please wait for compression to finish before sending the original.');
+        return;
+    }
+
+    await primeAudioCues();
     const sentFile = await getFileToSend(compress);
+    if (sentFile.tooBig) {
+        showTooBigFeedback(sentFile.status);
+        return;
+    }
+
+    document.getElementById('mobile-bottom-sheet').classList.add('hidden');
     const card = document.getElementById('mobile-result-card');
     card.classList.remove('hidden');
     card.innerHTML = `
         <div class="text-xs text-discord-textNormal p-3 bg-discord-sidebarBg rounded border border-discord-divider">
-            <div class="font-semibold text-white">${escapeHtml(currentFileState.name)} sent</div>
-            <div class="mt-1 text-discord-textMuted">${sentFile.status}</div>
+            <div class="font-semibold text-white">${escapeHtml(sentFile.name)} sent</div>
+            <div class="mt-1 text-discord-textMuted">${escapeHtml(sentFile.status)}</div>
         </div>
     `;
+    triggerVisualFeedback(card);
+    triggerVisualFeedback(document.getElementById('mobile-file-progress'));
+    announce(`${sentFile.name} sent. ${sentFile.status}`);
+    playSoundCue(sentFile.compressed || !compress ? 'success' : 'error');
 }
 
 function toggleAttachmentMenu() {
