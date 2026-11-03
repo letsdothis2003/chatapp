@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#111214]">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - General</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        discord: {
+                            brand: '#5865F2', brandHover: '#4752C4', green: '#23A55A',
+                            yellow: '#F0B232', red: '#F23F43', serverBg: '#1E1F22',
+                            sidebarBg: '#2B2D31', chatBg: '#313338', messageHover: '#2E3035',
+                            userBarBg: '#232428', inputBg: '#383A40', modalBg: '#313338',
+                            cardBg: '#2B2D31', textNormal: '#DBDEE1', textMuted: '#949BA4',
+                            textHeading: '#F2F3F5', divider: '#3F4147'
+                        }
+                    },
+                    fontFamily: { sans: ['DM Sans', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-full text-discord-textNormal flex flex-col font-sans overflow-hidden bg-[#090A0C]">
+
+    <header class="bg-[#1E1F22] border-b border-[#3F4147] px-6 py-3 flex items-center justify-between gap-3 z-50 flex-shrink-0 text-xs">
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 text-white font-bold text-sm">
+                <i class="fa-brands fa-discord text-discord-brand text-xl"></i>
+                <span>Chat</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 text-discord-textMuted">
+            <button onclick="toggleMobileView()" class="px-3 py-1.5 rounded-md border border-discord-divider hover:text-white transition-colors" aria-label="Toggle mobile preview">
+                <i class="fa-solid fa-mobile-screen mr-1"></i> Mobile preview
+            </button>
+        </div>
+    </header>
+
+    <input type="file" id="real-file-input" class="hidden" onchange="handleRealFileUpload(event)">
+
+    <main class="flex-1 overflow-hidden flex items-center justify-center p-4 relative bg-[#090A0C]">
+
+        <!-- DESKTOP VIEW -->
+        <div id="desktop-viewport" class="w-full max-w-[1440px] h-full max-h-[900px] bg-discord-chatBg rounded-xl shadow-2xl overflow-hidden flex flex-col border border-discord-divider relative">
+            
+            <!-- Window Header -->
+            <div class="h-9 bg-[#1E1F22] border-b border-black/30 flex items-center justify-between px-3 text-xs text-discord-textMuted select-none flex-shrink-0">
+                <div class="flex items-center">
+                    <span class="font-semibold text-discord-textNormal">Discord - #general-discussion</span>
+                </div>
+                <span class="text-[11px] text-discord-textMuted">#general</span>
+            </div>
+
+            <!-- Chat Area -->
+            <div class="flex-1 flex overflow-hidden relative">
+                <div class="flex-1 flex flex-col bg-discord-chatBg relative min-w-0">
+                    
+                    <!-- Channel Header -->
+                    <div class="h-12 px-6 border-b border-black/20 flex items-center justify-between shadow-sm flex-shrink-0 bg-[#2B2D31]">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-discord-textMuted text-2xl font-light">#</span>
+                            <span class="font-bold text-discord-textHeading text-base">general-discussion</span>
+                        </div>
+                    </div>
+
+                    <!-- Messages Feed -->
+                    <div id="desktop-chat-messages" class="flex-1 overflow-y-auto p-6 space-y-6">
+                        <div class="mt-4 space-y-2 border-b border-discord-divider pb-4">
+                            <div class="w-16 h-16 rounded-full bg-discord-sidebarBg flex items-center justify-center text-3xl text-white">#</div>
+                            <h2 class="text-2xl font-bold text-white">Welcome to #general-discussion!</h2>
+                            <p class="text-xs text-discord-textMuted">Share a file with the conversation.</p>
+                        </div>
+                        <div id="desktop-result-message" class="space-y-4"></div>
+                    </div>
+
+                    <!-- Input Bar -->
+                    <div class="p-4 pt-0 flex-shrink-0">
+                        <div class="bg-discord-inputBg rounded-lg p-2.5 flex items-center justify-between border border-transparent focus-within:border-discord-brand transition-colors">
+                            <div class="flex items-center space-x-3 text-discord-textMuted w-full">
+                                <div class="relative">
+                                    <button onclick="toggleAttachmentMenu()" class="w-8 h-8 rounded-full bg-discord-textMuted/20 hover:bg-discord-brand hover:text-white flex items-center justify-center transition-colors" aria-label="Add attachment" aria-haspopup="true" aria-expanded="false" id="attachment-menu-button">
+                                        <i class="fa-solid fa-plus text-sm"></i>
+                                    </button>
+                                    <div id="attachment-menu" class="attachment-menu hidden" role="menu">
+                                    <button onclick="triggerDesktopUpload()" role="menuitem"><i class="fa-regular fa-file"></i><span>Choose files</span></button>
+                                    <button onclick="openDrivePicker()" role="menuitem"><i class="fa-brands fa-google-drive"></i><span>Google Drive</span></button>
+                                    </div>
+                                </div>
+                                <input type="text" readonly placeholder="Message #general-discussion" class="bg-transparent text-sm text-discord-textMuted flex-1 outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DRAG & DROP OVERLAY (Frame 1) -->
+                    <div id="frame-1-overlay" class="absolute inset-3 bg-discord-brand/10 backdrop-blur-sm rounded-xl border-4 border-dashed border-discord-brand drop-active-border flex flex-col items-center justify-center z-40 hidden cursor-pointer" onclick="goToSmartModal()">
+                        <div class="bg-discord-sidebarBg border border-discord-brand/50 shadow-2xl rounded-2xl p-8 flex flex-col items-center space-y-4 pointer-events-none transform scale-105 transition-transform max-w-md text-center">
+                            <div id="overlay-file-icon" class="w-20 h-20 rounded-full bg-discord-brand/20 border border-discord-brand/40 flex items-center justify-center text-discord-brand text-4xl">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                            </div>
+                            <div>
+                                <h4 id="overlay-filename" class="text-2xl font-bold text-white truncate max-w-xs">Upload File</h4>
+                                <p class="text-sm text-discord-textMuted mt-1">Release to analyze and optimize file</p>
+                            </div>
+                        </div>
+                        <div class="absolute bottom-24 bg-[#111214] text-white text-xs px-5 py-2.5 rounded-lg shadow-2xl border border-discord-brand/40 flex items-center space-x-2.5 animate-bounce">
+                            <i class="fa-solid fa-triangle-exclamation text-discord-yellow text-sm"></i>
+                            <span id="overlay-tooltip-text">File detected. <strong>Release to auto-compress.</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- SMART MODAL (Frame 2) -->
+                    <div id="frame-2-modal" class="absolute inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-50 hidden">
+                        <div class="bg-discord-modalBg w-[720px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg shadow-2xl border border-discord-divider flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                            <div class="px-6 py-4 border-b border-discord-divider flex items-center justify-between bg-discord-sidebarBg">
+                                <div class="flex items-center space-x-2.5">
+                                    <div class="w-7 h-7 rounded bg-discord-brand/20 flex items-center justify-center text-discord-brand text-xs"><i class="fa-solid fa-compress"></i></div>
+                                    <h3 class="font-bold text-white text-base">Smart File Optimizer</h3>
+                                </div>
+                                <button onclick="startNormalChatState()" class="text-discord-textMuted hover:text-white transition-colors"><i class="fa-solid fa-xmark text-lg"></i></button>
+                            </div>
+                            <div id="modal-file-details" class="p-6 flex space-x-5 items-start">
+                                <div id="modal-file-thumbnail" class="w-44 h-28 bg-black rounded-lg relative overflow-hidden flex-shrink-0 border border-discord-divider flex items-center justify-center"></div>
+                                <div class="min-w-0 flex-1 space-y-3.5">
+                                    <div>
+                                        <h4 id="modal-file-name" class="font-bold text-discord-textHeading text-sm truncate">file.mp4</h4>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <span id="modal-orig-size" class="text-xs text-discord-textMuted">45 MB</span>
+                                            <span class="text-xs text-discord-textMuted">Original file</span>
+                                        </div>
+                                        <div class="mt-2 flex items-center gap-2 text-xs">
+                                            <i class="fa-solid fa-arrow-right text-discord-textMuted"></i>
+                                            <span id="modal-compressed-size" class="font-semibold text-discord-green">Measuring compressed size...</span>
+                                        </div>
+                                    </div>
+                                    <div class="rounded-lg border border-discord-divider bg-discord-userBarBg p-3">
+                                        <p id="compression-note" class="text-xs text-discord-textMuted">Compression is available for images. Other file types will be sent unchanged.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="modal-footer" class="bg-discord-userBarBg px-6 py-4 flex items-center justify-between border-t border-discord-divider">
+                                <span class="text-xs text-discord-textMuted">Choose how to send this file</span>
+                                <div id="modal-actions" class="flex gap-2">
+                                    <button onclick="startNormalChatState()" class="px-4 py-2 text-xs font-semibold text-discord-textNormal hover:underline">Cancel</button>
+                                    <button onclick="sendDesktopFile(false)" class="px-4 py-2 text-xs font-semibold border border-discord-divider hover:bg-discord-sidebarBg text-white rounded-md">Send original</button>
+                                    <button onclick="sendDesktopFile(true)" class="px-4 py-2 text-xs font-semibold bg-discord-brand hover:bg-discord-brandHover text-white rounded-md"><i class="fa-solid fa-compress mr-1"></i>Compress &amp; send</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- MOBILE VIEW -->
+        <div id="mobile-viewport" class="w-[390px] max-w-full h-[min(812px,calc(100vh-7rem))] bg-discord-chatBg rounded-[32px] shadow-2xl overflow-hidden border-[6px] border-[#1E1F22] relative flex flex-col hidden">
+            <div class="flex-1 flex flex-col bg-discord-chatBg relative overflow-hidden">
+                <div class="h-12 bg-[#2B2D31] px-4 flex items-center justify-between border-b border-black/20 text-white font-bold text-sm">
+                    <div class="flex items-center space-x-2"><i class="fa-solid fa-hashtag text-discord-textMuted"></i><span>general-discussion</span></div>
+                    <i class="fa-solid fa-ellipsis-vertical text-discord-textMuted"></i>
+                </div>
+                <div class="flex-1 p-4 space-y-4 overflow-y-auto">
+                    <div id="mobile-result-card" class="hidden"></div>
+                </div>
+                <div class="p-3 bg-[#2B2D31] flex items-center space-x-2">
+                    <div class="relative">
+                        <button onclick="toggleMobileAttachmentMenu()" class="w-8 h-8 rounded-full bg-discord-brand text-white flex items-center justify-center" aria-label="Add attachment" aria-haspopup="true" aria-expanded="false" id="mobile-attachment-menu-button"><i class="fa-solid fa-plus text-sm"></i></button>
+                        <div id="mobile-attachment-menu" class="attachment-menu hidden" role="menu">
+                            <button onclick="triggerDesktopUpload()" role="menuitem"><i class="fa-regular fa-file"></i><span>Choose files</span></button>
+                            <button onclick="openDrivePicker()" role="menuitem"><i class="fa-brands fa-google-drive"></i><span>Google Drive</span></button>
+                        </div>
+                    </div>
+                    <input type="text" placeholder="Message #general-discussion" class="flex-1 bg-discord-inputBg rounded-full px-4 py-1.5 text-xs text-white outline-none" readonly>
+                </div>
+
+                <!-- Mobile Bottom Sheet -->
+                <div id="mobile-bottom-sheet" class="absolute inset-0 bg-black/60 z-50 flex flex-col justify-end hidden">
+                    <div class="bg-discord-modalBg rounded-t-2xl p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
+                        <div id="mobile-step-5" class="hidden space-y-4">
+                            <div class="flex items-center space-x-3">
+                                <div id="mobile-preview-box" class="w-16 h-16 bg-black rounded-lg relative overflow-hidden flex-shrink-0 flex items-center justify-center"></div>
+                                <div>
+                                    <div id="mobile-preview-name" class="text-xs font-bold text-white">video.mp4</div>
+                                    <div id="mobile-preview-compressed" class="text-[11px] text-discord-green">Measuring compressed size...</div>
+                                </div>
+                            </div>
+                            <p id="mobile-compression-note" class="text-xs text-discord-textMuted">Compression is available for images. Other file types will be sent unchanged.</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="sendMobileFile(false)" class="py-2.5 border border-discord-divider text-white text-xs font-semibold rounded-lg">Send original</button>
+                                <button onclick="sendMobileFile(true)" class="py-2.5 bg-discord-brand text-white text-xs font-semibold rounded-lg">Compress &amp; send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="drive-picker" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="drive-picker-title">
+        <div class="w-full max-w-lg rounded-lg border border-discord-divider bg-discord-modalBg p-5 shadow-2xl">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 id="drive-picker-title" class="font-semibold text-white"><i class="fa-brands fa-google-drive mr-2 text-discord-green"></i>Google Drive</h2>
+                <button onclick="closeDrivePicker()" class="text-discord-textMuted hover:text-white" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="mb-4 text-xs text-discord-textMuted">Sample Drive files · select an item to share</p>
+            <div id="drive-demo-files" class="max-h-[55vh] space-y-2 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Load JS -->
+    <script src="script.js"></script>
+</body>
+</html>  
