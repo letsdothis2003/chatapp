@@ -204,7 +204,8 @@
 
                 <!-- Mobile Bottom Sheet -->
                 <div id="mobile-bottom-sheet" class="absolute inset-0 bg-black/60 z-50 flex flex-col justify-end hidden">
-                    <div class="bg-discord-modalBg rounded-t-2xl p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
+                    <div id="mobile-sheet-panel" class="mobile-sheet-panel bg-discord-modalBg rounded-t-2xl p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
+                        <div id="mobile-sheet-drag-handle" class="mobile-sheet-drag-handle" aria-hidden="true"><span></span></div>
                         <div id="mobile-step-5" class="hidden space-y-4" role="dialog" aria-label="File compression options">
                             <div class="flex items-center space-x-3">
                                 <div id="mobile-preview-box" class="w-16 h-16 bg-black rounded-lg relative overflow-hidden flex-shrink-0 flex items-center justify-center"></div>

@@ -1,5 +1,6 @@
 const COMPRESSION_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
 const MAX_COMPRESSED_SIZE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_SIZE_MESSAGE = 'This file is too large to send. The maximum file size is 20 MB.';
 const DEFAULT_COMPRESSION_STATUS = 'Select a file to check compression.';
 
 let currentFileState = {
@@ -20,6 +21,7 @@ let currentFileState = {
 let dragCounter = 0;
 let currentCompressionPromise = Promise.resolve(null);
 let audioContext = null;
+let mobileSheetDrag = null;
 
 const DEMO_DRIVE_FILES = [
     { name: 'Coastline at dusk.jpg', type: 'image', size: '2.4 MB', imageUrl: 'https://picsum.photos/seed/drive-coastline/480/320' },
@@ -169,7 +171,9 @@ function updateCompressionEstimate() {
         icon.className = `compression-status-icon compression-status-${statusKind}`;
         icon.innerHTML = `<i class="fa-solid ${statusIcons[statusKind]}" aria-hidden="true"></i>`;
         const button = document.getElementById(buttonId);
-        const canSendCompressed = statusKind === 'success';
+        const hasSendableCompressedFile = currentFileState.compressedBlob
+            && currentFileState.compressedBlob.size <= MAX_COMPRESSED_SIZE_BYTES;
+        const canSendCompressed = statusKind === 'success' || hasSendableCompressedFile;
         button.disabled = !canSendCompressed;
         button.className = `compression-send-button ${canSendCompressed ? 'compression-send-button-ready' : 'compression-send-button-disabled'}`;
     }
@@ -386,6 +390,13 @@ async function getFileToSend(compress) {
     const fileState = currentFileState;
     const compressionPromise = currentCompressionPromise;
     if (!compress) {
+        if (fileState.sizeBytes > MAX_COMPRESSED_SIZE_BYTES) {
+            return {
+                name: fileState.name,
+                tooBig: true,
+                status: `${MAX_FILE_SIZE_MESSAGE} (${fileState.sizeMB}).`
+            };
+        }
         return {
             dataUrl: fileState.dataUrl,
             name: fileState.name,
@@ -451,7 +462,7 @@ function showTooBigFeedback(message) {
     triggerVisualFeedback(document.getElementById('modal-compression-feedback'));
     triggerVisualFeedback(document.getElementById('mobile-compression-feedback'));
     announce(message);
-    playSoundCue('error');
+    playSoundCue('tooBig');
 }
 
 function getCompressedFileName(fileName, format) {
@@ -543,7 +554,8 @@ function playSoundCue(kind) {
         processing: [{ frequency: 520, delay: 0, duration: 0.09 }, { frequency: 740, delay: 0.11, duration: 0.09 }],
         success: [{ frequency: 660, delay: 0, duration: 0.1 }, { frequency: 880, delay: 0.1, duration: 0.1 }, { frequency: 1100, delay: 0.2, duration: 0.14 }],
         warning: [{ frequency: 520, delay: 0, duration: 0.13 }, { frequency: 440, delay: 0.15, duration: 0.16 }],
-        error: [{ frequency: 330, delay: 0, duration: 0.15 }, { frequency: 220, delay: 0.17, duration: 0.18 }]
+        error: [{ frequency: 330, delay: 0, duration: 0.15 }, { frequency: 220, delay: 0.17, duration: 0.18 }],
+        tooBig: [{ frequency: 784, delay: 0, duration: 0.11 }, { frequency: 659, delay: 0.13, duration: 0.16 }]
     };
 
     for (const cue of cues[kind] || cues.error) {
@@ -637,6 +649,51 @@ function closeMobileAttachmentMenu() {
     if (menu) menu.classList.add('hidden');
     const button = document.getElementById('mobile-attachment-menu-button');
     if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function startMobileSheetDrag(event) {
+    if (!event.isPrimary || event.button !== 0) return;
+
+    const handle = event.currentTarget;
+    const panel = document.getElementById('mobile-sheet-panel');
+    event.preventDefault();
+    mobileSheetDrag = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        deltaY: 0,
+        panel
+    };
+    panel.classList.add('is-dragging');
+    handle.setPointerCapture(event.pointerId);
+}
+
+function moveMobileSheetDrag(event) {
+    if (!mobileSheetDrag || event.pointerId !== mobileSheetDrag.pointerId) return;
+
+    mobileSheetDrag.deltaY = Math.max(0, event.clientY - mobileSheetDrag.startY);
+    mobileSheetDrag.panel.style.transform = `translateY(${mobileSheetDrag.deltaY}px)`;
+}
+
+function finishMobileSheetDrag(event) {
+    if (!mobileSheetDrag || event.pointerId !== mobileSheetDrag.pointerId) return;
+
+    const { deltaY, panel } = mobileSheetDrag;
+    const dismissThreshold = Math.min(140, Math.max(80, panel.offsetHeight * 0.22));
+    mobileSheetDrag = null;
+    panel.classList.remove('is-dragging');
+    panel.style.transform = '';
+
+    if (deltaY >= dismissThreshold) {
+        document.getElementById('mobile-bottom-sheet').classList.add('hidden');
+    }
+}
+
+function cancelMobileSheetDrag(event) {
+    if (!mobileSheetDrag || event.pointerId !== mobileSheetDrag.pointerId) return;
+
+    mobileSheetDrag.panel.classList.remove('is-dragging');
+    mobileSheetDrag.panel.style.transform = '';
+    mobileSheetDrag = null;
 }
 
 function openDrivePicker() {
@@ -796,4 +853,10 @@ window.onload = function() {
     wrapper.addEventListener('dragover', handleDragOver);
     wrapper.addEventListener('dragleave', handleDragLeave);
     wrapper.addEventListener('drop', handleDrop);
+
+    const mobileSheetHandle = document.getElementById('mobile-sheet-drag-handle');
+    mobileSheetHandle.addEventListener('pointerdown', startMobileSheetDrag);
+    mobileSheetHandle.addEventListener('pointermove', moveMobileSheetDrag);
+    mobileSheetHandle.addEventListener('pointerup', finishMobileSheetDrag);
+    mobileSheetHandle.addEventListener('pointercancel', cancelMobileSheetDrag);
 };

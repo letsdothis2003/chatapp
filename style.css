@@ -35,6 +35,30 @@
 .animate-in.slide-in-from-bottom {
     animation: slide-in-from-bottom 0.2s ease-out;
 }
+.mobile-sheet-panel {
+    transition: transform 0.18s ease-out;
+}
+.mobile-sheet-panel.is-dragging {
+    transition: none;
+}
+.mobile-sheet-drag-handle {
+    display: flex;
+    height: 24px;
+    align-items: flex-start;
+    justify-content: center;
+    margin: -8px 0 -4px;
+    touch-action: none;
+    cursor: grab;
+}
+.mobile-sheet-drag-handle:active {
+    cursor: grabbing;
+}
+.mobile-sheet-drag-handle span {
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: #5c5e66;
+}
 
 .attachment-menu {
     position: absolute;
